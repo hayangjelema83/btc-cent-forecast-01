@@ -120,9 +120,16 @@ function forecast(m: CaseMarket): number {
 mkdirSync(OUTPUT_DIR, { recursive: true });
 // Every case file, in name order, so two runs write the same bytes.
 const inputs = readdirSync(INPUT_DIR).filter((f) => f.endsWith('.in')).sort();
+// Fail loudly on a misconfigured run instead of silently writing nothing.
+if (inputs.length === 0) throw new Error(`no .in files in ${INPUT_DIR}`);
 for (const file of inputs) {
   const id = file.slice(0, -'.in'.length);
   const c = JSON.parse(readFileSync(join(INPUT_DIR, file), 'utf8')) as Case;
   if (!Array.isArray(c.markets) || c.markets.length !== 1) throw new Error(`${file} does not hold exactly one market`);
-  writeFileSync(join(OUTPUT_DIR, `${id}.out`), `${JSON.stringify({ forecasts: [{ case: id, price: forecast(c.markets[0] as CaseMarket) }] })}\n`);
+  const price = forecast(c.markets[0] as CaseMarket);
+  // The scorer reads one finite price on the 5-decimal grid; refuse to write anything else.
+  if (!Number.isFinite(price) || price <= 0 || price5(price) !== price) {
+    throw new Error(`${file}: forecast ${price} is not a finite price on the 5-decimal grid`);
+  }
+  writeFileSync(join(OUTPUT_DIR, `${id}.out`), `${JSON.stringify({ forecasts: [{ case: id, price }] })}\n`);
 }
